@@ -1,0 +1,9 @@
+node_modules
+dist
+.next
+.env
+.env.*
+!.env.example
+apps/api/prisma/*.db
+apps/android/.gradle
+apps/android/**/build

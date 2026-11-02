@@ -1,0 +1,16 @@
+{
+  "name": "attendance-gps-mvp",
+  "private": true,
+  "workspaces": [
+    "apps/api",
+    "apps/admin"
+  ],
+  "engines": {
+    "node": ">=20.9.0"
+  },
+  "scripts": {
+    "build": "npm run build --workspace @attendance/api && npm run build --workspace @attendance/admin",
+    "dev:api": "npm run start:dev --workspace @attendance/api",
+    "dev:admin": "npm run dev --workspace @attendance/admin"
+  }
+}

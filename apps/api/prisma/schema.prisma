@@ -1,0 +1,67 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  SUPERADMIN
+  ADMIN
+  EMPLOYEE
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         Role     @default(EMPLOYEE)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  shifts       Shift[]
+}
+
+model SystemSettings {
+  id                    String @id @default("global")
+  locationRetentionDays Int    @default(90)
+}
+
+model Shift {
+  id          String           @id @default(cuid())
+  employeeId  String
+  activeEmployeeId String? @unique
+  employee    User             @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  startedAt   DateTime         @default(now())
+  endedAt     DateTime?
+  distanceMeters Int?
+  checkInLat  Float?
+  checkInLng  Float?
+  checkInAcc  Float?
+  checkInMocked Boolean @default(false)
+  checkOutLat Float?
+  checkOutLng Float?
+  checkOutAcc Float?
+  checkOutMocked Boolean?
+  samples     LocationSample[]
+
+  @@index([employeeId, startedAt])
+  @@index([startedAt])
+}
+
+model LocationSample {
+  id         String   @id @default(cuid())
+  shiftId    String
+  shift      Shift    @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+  latitude   Float
+  longitude  Float
+  accuracy   Float
+  isMocked   Boolean  @default(false)
+  capturedAt DateTime
+  receivedAt DateTime @default(now())
+
+  @@unique([shiftId, capturedAt])
+  @@index([shiftId, capturedAt])
+}
