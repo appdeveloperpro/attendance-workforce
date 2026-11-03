@@ -84,9 +84,9 @@ const proxy = http.createServer((request, response) => {
 });
 
 async function main() {
-  const publicPort = Number(process.env.PORT);
+  const publicPort = Number(process.env.PORT || 3000);
   if (!Number.isInteger(publicPort) || publicPort < 1 || publicPort > 65535) {
-    throw new Error('Hostinger must provide a valid PORT environment variable.');
+    throw new Error('PORT must be a valid TCP port number.');
   }
 
   [apiPort, adminPort] = await Promise.all([reservePort(), reservePort()]);
