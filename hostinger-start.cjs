@@ -116,12 +116,21 @@ async function main() {
     throw new Error('PORT must be a valid TCP port number.');
   }
 
-  [apiPort, adminPort] = await Promise.all([reservePort(), reservePort()]);
-  if (apiPort === adminPort) return main();
-
   for (const signal of ['SIGINT', 'SIGTERM']) {
     process.once(signal, () => shutdown(0));
   }
+
+  proxy.once('error', (error) => {
+    console.error('Failed to start the public application listener:', error);
+    shutdown(1);
+  });
+  proxy.listen(publicPort, '0.0.0.0', () => {
+    console.log(`Dashboard and API proxy listening on port ${publicPort}.`);
+  });
+
+  do {
+    [apiPort, adminPort] = await Promise.all([reservePort(), reservePort()]);
+  } while (apiPort === adminPort);
 
   const api = startChild(
     process.execPath,
@@ -138,18 +147,11 @@ async function main() {
     'admin dashboard',
   );
 
-  await Promise.all([
-    waitUntilReady(api, apiPort, '/api/health'),
-    waitUntilReady(admin, adminPort, '/'),
-  ]);
-  if (shuttingDown) return;
-
-  proxy.once('error', (error) => {
-    console.error('Failed to start the public application listener:', error);
-    shutdown(1);
+  void waitUntilReady(api, apiPort, '/api/health').catch((error) => {
+    console.error('API readiness check failed:', error);
   });
-  proxy.listen(publicPort, '0.0.0.0', () => {
-    console.log(`Dashboard and API proxy listening on port ${publicPort}.`);
+  void waitUntilReady(admin, adminPort, '/').catch((error) => {
+    console.error('Admin dashboard readiness check failed:', error);
   });
 }
 
