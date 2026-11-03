@@ -46,6 +46,8 @@ Requirements: Node.js 20.9+, npm, Android Studio with Android SDK, and Docker De
    postgresql://attendance:<POSTGRES_PASSWORD>@localhost:5432/attendance?schema=public
    ```
 
+   Set `DIRECT_URL` to the direct or session-mode PostgreSQL connection for the same database. For Supabase, use its session-mode connection (port `5432`) for `DIRECT_URL` and its pooled connection (typically port `6543`) for `DATABASE_URL`. Prisma uses `DIRECT_URL` for schema operations such as `db push`.
+
 4. Create the database tables and initial superadmin:
 
    ```powershell
@@ -78,7 +80,7 @@ Requirements: Node.js 20.9+, npm, Android Studio with Android SDK, and Docker De
 
 Deploy the API and admin dashboard as separate Node.js websites/services. The API is the root workspace's default production start target; it does not serve the dashboard at `/`.
 
-For the API deployment, use the repository root (`/`) as the root directory, Node.js 20.9 or newer, `npm run build` as the build command, and `npm start` as the start command. Configure `DATABASE_URL`, `JWT_SECRET`, `ADMIN_EMAIL`, `ADMIN_NAME`, `ADMIN_PASSWORD`, and `ADMIN_WEB_ORIGIN` in the API deployment's environment variables. Hostinger supplies `PORT`; `LOCATION_RETENTION_DAYS` is optional and defaults to `90`. `SUPABASE_URL` and `SUPABASE_API_KEY` are not used by this API.
+For the API deployment, use the repository root (`/`) as the root directory, Node.js 20.9 or newer, `npm run build` as the build command, and `npm start` as the start command. Configure `DATABASE_URL`, `DIRECT_URL`, `JWT_SECRET`, `ADMIN_EMAIL`, `ADMIN_NAME`, `ADMIN_PASSWORD`, and `ADMIN_WEB_ORIGIN` in the API deployment's environment variables. Use Supabase's pooled connection for `DATABASE_URL` and its session-mode connection for `DIRECT_URL`. Hostinger supplies `PORT`; `LOCATION_RETENTION_DAYS` is optional and defaults to `90`. `SUPABASE_URL` and `SUPABASE_API_KEY` are not used by this API.
 
 Set `ADMIN_WEB_ORIGIN` to the exact HTTPS origin serving the admin dashboard. For the separate admin deployment, set `NEXT_PUBLIC_API_URL` to the API's HTTPS URL ending in `/api` before building the dashboard. The dashboard origin and API origin must be different if deployed as separate websites.
 
