@@ -24,20 +24,92 @@ export class AdminService {
     input: { name: string; email: string; password: string },
     role: 'ADMIN' | 'EMPLOYEE',
   ) {
+    const name = input.name.trim();
+    const email = input.email.trim().toLowerCase();
+    if (!name) throw new BadRequestException('Name cannot be empty.');
     try {
       const user = await this.prisma.user.create({
         data: {
-          name: input.name.trim(),
-          email: input.email.trim().toLowerCase(),
+          name,
+          email,
           passwordHash: await hash(input.password, 12),
           role,
         },
-        select: { id: true, name: true, email: true, role: true, createdAt: true },
+        select: { id: true, name: true, email: true, role: true, isActive: true, createdAt: true },
       });
       return user;
     } catch (error) {
       if (isUniqueConstraintError(error)) {
         throw new ConflictException('An account with this email already exists.');
+      }
+      throw error;
+    }
+  }
+
+  listEmployees() {
+    return this.prisma.user.findMany({
+      where: { role: 'EMPLOYEE' },
+      select: { id: true, name: true, email: true, role: true, isActive: true, createdAt: true },
+      orderBy: [{ isActive: 'desc' }, { name: 'asc' }],
+    });
+  }
+
+  async updateEmployee(
+    id: string,
+    input: { isActive?: boolean; name?: string; email?: string; password?: string },
+  ) {
+    const data: {
+      isActive?: boolean;
+      name?: string;
+      email?: string;
+      passwordHash?: string;
+    } = {};
+    if (input.isActive !== undefined) data.isActive = input.isActive;
+    if (input.name !== undefined) {
+      const name = input.name.trim();
+      if (!name) throw new BadRequestException('Name cannot be empty.');
+      data.name = name;
+    }
+    if (input.email !== undefined) data.email = input.email.trim().toLowerCase();
+    if (input.password !== undefined) data.passwordHash = await hash(input.password, 12);
+    if (Object.keys(data).length === 0) {
+      throw new BadRequestException('Provide at least one employee field to update.');
+    }
+
+    try {
+      return await this.prisma.$transaction(async (transaction) => {
+        const target = await transaction.user.findUnique({
+          where: { id },
+          select: { role: true, isActive: true },
+        });
+        if (!target || target.role !== 'EMPLOYEE') {
+          throw new NotFoundException('Employee account not found.');
+        }
+
+        if (input.isActive === false && target.isActive) {
+          const activeShift = await transaction.shift.findFirst({
+            where: { employeeId: id, endedAt: null },
+            select: { id: true },
+          });
+          if (activeShift) {
+            throw new BadRequestException(
+              'This employee has an active shift. Check them out before disabling the account.',
+            );
+          }
+        }
+
+        return transaction.user.update({
+          where: { id },
+          data,
+          select: { id: true, name: true, email: true, role: true, isActive: true, createdAt: true },
+        });
+      }, { isolationLevel: 'Serializable' });
+    } catch (error) {
+      if (isUniqueConstraintError(error)) {
+        throw new ConflictException('An account with this email already exists.');
+      }
+      if (isSerializationConflict(error)) {
+        throw new ConflictException('This employee account changed during the update. Refresh and try again.');
       }
       throw error;
     }
@@ -111,6 +183,9 @@ export class AdminService {
     }, { isolationLevel: 'Serializable' }).catch((error: unknown) => {
       if (isUniqueConstraintError(error)) {
         throw new ConflictException('An account with this email already exists.');
+      }
+      if (isSerializationConflict(error)) {
+        throw new ConflictException('This administrator account changed during the update. Refresh and try again.');
       }
       throw error;
     });
@@ -235,4 +310,9 @@ export class AdminService {
 function isUniqueConstraintError(error: unknown): error is { code: string } {
   return typeof error === 'object' && error !== null && 'code' in error &&
     (error as { code?: unknown }).code === 'P2002';
+}
+
+function isSerializationConflict(error: unknown): error is { code: string } {
+  return typeof error === 'object' && error !== null && 'code' in error &&
+    (error as { code?: unknown }).code === 'P2034';
 }

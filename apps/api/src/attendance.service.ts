@@ -3,6 +3,7 @@ import {
   ConflictException,
   Injectable,
   NotFoundException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { PrismaService } from './prisma.service';
 import { LocationDto, LocationSampleDto } from './location.dto';
@@ -32,30 +33,42 @@ export class AttendanceService {
       );
     }
     try {
-      const shift = await this.prisma.shift.create({
-        data: {
-          employeeId,
-          activeEmployeeId: employeeId,
-          checkInLat: location.latitude,
-          checkInLng: location.longitude,
-          checkInAcc: location.accuracy,
-          checkInMocked: location.isMocked ?? false,
-          samples: {
-            create: {
-              latitude: location.latitude,
-              longitude: location.longitude,
-              accuracy: location.accuracy,
-              isMocked: location.isMocked ?? false,
-              capturedAt: new Date(),
+      const shift = await this.prisma.$transaction(async (transaction) => {
+        const employee = await transaction.user.findUnique({
+          where: { id: employeeId },
+          select: { role: true, isActive: true },
+        });
+        if (!employee || employee.role !== 'EMPLOYEE' || !employee.isActive) {
+          throw new UnauthorizedException('This employee account is inactive. Sign in again.');
+        }
+        return transaction.shift.create({
+          data: {
+            employeeId,
+            activeEmployeeId: employeeId,
+            checkInLat: location.latitude,
+            checkInLng: location.longitude,
+            checkInAcc: location.accuracy,
+            checkInMocked: location.isMocked ?? false,
+            samples: {
+              create: {
+                latitude: location.latitude,
+                longitude: location.longitude,
+                accuracy: location.accuracy,
+                isMocked: location.isMocked ?? false,
+                capturedAt: new Date(),
+              },
             },
           },
-        },
-        select: { id: true, startedAt: true },
-      });
+          select: { id: true, startedAt: true },
+        });
+      }, { isolationLevel: 'Serializable' });
       return { shiftId: shift.id, startedAt: shift.startedAt };
     } catch (error) {
       if (isUniqueConstraintError(error)) {
         throw new ConflictException('You already have an active shift.');
+      }
+      if (isSerializationConflict(error)) {
+        throw new ConflictException('The employee account or active shift changed. Please retry.');
       }
       throw error;
     }
@@ -188,4 +201,9 @@ export class AttendanceService {
 function isUniqueConstraintError(error: unknown): error is { code: string } {
   return typeof error === 'object' && error !== null && 'code' in error &&
     (error as { code?: unknown }).code === 'P2002';
+}
+
+function isSerializationConflict(error: unknown): error is { code: string } {
+  return typeof error === 'object' && error !== null && 'code' in error &&
+    (error as { code?: unknown }).code === 'P2034';
 }

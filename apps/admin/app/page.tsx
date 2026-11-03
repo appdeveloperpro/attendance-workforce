@@ -12,6 +12,14 @@ type AdminAccount = {
   role: 'ADMIN' | 'SUPERADMIN';
   isActive: boolean;
 };
+type EmployeeAccount = {
+  id: string;
+  email: string;
+  name: string;
+  role: 'EMPLOYEE';
+  isActive: boolean;
+  createdAt: string;
+};
 type Shift = {
   id: string;
   employee: { id: string; name: string; email: string };
@@ -59,7 +67,13 @@ export default function Home() {
   const [employeeName, setEmployeeName] = useState('');
   const [employeeEmail, setEmployeeEmail] = useState('');
   const [employeePassword, setEmployeePassword] = useState('');
-  const [section, setSection] = useState<'overview' | 'access' | 'settings'>('overview');
+  const [employees, setEmployees] = useState<EmployeeAccount[]>([]);
+  const [employeeSearch, setEmployeeSearch] = useState('');
+  const [editingEmployeeId, setEditingEmployeeId] = useState('');
+  const [editingEmployeeName, setEditingEmployeeName] = useState('');
+  const [editingEmployeeEmail, setEditingEmployeeEmail] = useState('');
+  const [editingEmployeePassword, setEditingEmployeePassword] = useState('');
+  const [section, setSection] = useState<'overview' | 'employees' | 'access' | 'settings'>('overview');
   const [admins, setAdmins] = useState<AdminAccount[]>([]);
   const [adminName, setAdminName] = useState('');
   const [adminEmail, setAdminEmail] = useState('');
@@ -141,6 +155,10 @@ export default function Home() {
   }, [token, date]);
 
   useEffect(() => {
+    if (token) void loadEmployees();
+  }, [token]);
+
+  useEffect(() => {
     if (token && user?.role === 'SUPERADMIN') {
       void loadAdmins();
       void loadSettings();
@@ -159,6 +177,22 @@ export default function Home() {
       setAdmins(result);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Could not load administrators.');
+    }
+  }
+
+  async function loadEmployees() {
+    if (!token) return;
+    try {
+      const response = await fetch(`${API_URL}/admin/employees`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      handleUnauthorized(response);
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.message ?? 'Could not load employee accounts.');
+      setEmployees(result);
+    } catch (error) {
+      setStatusKind('error');
+      setStatus(error instanceof Error ? error.message : 'Could not load employee accounts.');
     }
   }
 
@@ -321,8 +355,44 @@ export default function Home() {
       setShowEmployeeForm(false);
       setStatusKind('success');
       setStatus(`Employee account created for ${result.email}. Share the initial password securely.`);
+      await loadEmployees();
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Could not create employee.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function updateEmployee(
+    account: EmployeeAccount,
+    changes: Partial<Pick<EmployeeAccount, 'isActive' | 'name' | 'email'>> & { password?: string },
+  ) {
+    if (changes.isActive === false && !window.confirm(
+      `Disable ${account.name}'s account? They will no longer be able to sign in. Attendance history will be retained.`,
+    )) return;
+    setLoading(true);
+    try {
+      const response = await fetch(`${API_URL}/admin/employees/${account.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(changes),
+      });
+      handleUnauthorized(response);
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.message ?? 'Could not update employee account.');
+      setEmployees((existing) => existing.map((item) => item.id === result.id ? result : item));
+      setEditingEmployeeId('');
+      setEditingEmployeePassword('');
+      setStatusKind('success');
+      setStatus(changes.password
+        ? `Updated employee details and reset the password for ${result.email}.`
+        : `Updated employee account ${result.email}.`);
+    } catch (error) {
+      setStatusKind('error');
+      setStatus(error instanceof Error ? error.message : 'Could not update employee account.');
     } finally {
       setLoading(false);
     }
@@ -388,6 +458,15 @@ export default function Home() {
         <p className="nav-caption">WORKSPACE</p>
         <nav className="side-nav" aria-label="Workspace">
           <button className={section === 'overview' ? 'nav-item active' : 'nav-item'} onClick={() => setSection('overview')}><span>◷</span>Attendance</button>
+          <button
+            className={section === 'employees' ? 'nav-item active' : 'nav-item'}
+            onClick={() => {
+              setSection('employees');
+              setShowEmployeeForm(true);
+            }}
+          >
+            <span>♙</span>Employees
+          </button>
           {user.role === 'SUPERADMIN' && (
             <>
               <p className="nav-caption">PLATFORM</p>
@@ -415,11 +494,13 @@ export default function Home() {
       <section className="content">
         <div className="page-heading">
           <div>
-            <p className="eyebrow">{section === 'overview' ? 'WORKFORCE OPERATIONS' : 'PLATFORM CONTROL'}</p>
-            <h1>{section === 'overview' ? 'Attendance overview' : section === 'access' ? 'Admin access' : 'System settings'}</h1>
+            <p className="eyebrow">{section === 'overview' || section === 'employees' ? 'WORKFORCE OPERATIONS' : 'PLATFORM CONTROL'}</p>
+            <h1>{section === 'overview' ? 'Attendance overview' : section === 'employees' ? 'Employee management' : section === 'access' ? 'Admin access' : 'System settings'}</h1>
             <p className="muted">
               {section === 'overview'
                 ? 'A clear view of today’s attendance and active workforce.'
+                : section === 'employees'
+                  ? 'Register employees, update their account details, reset passwords, and manage sign-in access.'
                 : section === 'access'
                   ? 'Control who has administrator and superadmin access.'
                   : 'Manage organization-wide location data retention.'}
@@ -439,19 +520,95 @@ export default function Home() {
           <div className="stat-card"><span>Recorded distance (page)</span><strong>{(totalDistance / 1000).toFixed(1)} km</strong><small>route estimate on this page</small></div>
         </div>}
 
-        {section === 'overview' && <section className="panel employee-panel">
+        {section === 'employees' && <section className="panel employee-panel">
           <div className="panel-heading">
-            <div><h2>Employee accounts</h2><p className="muted">Create an account to invite an employee to the app.</p></div>
-            <button className="primary" onClick={() => setShowEmployeeForm((visible) => !visible)}>Add employee</button>
+            <div><h2>Employee accounts</h2><p className="muted">Register, update, and manage employee sign-in access. Attendance history is retained when an account is disabled.</p></div>
+            <div className="employee-actions">
+              <button className="secondary" onClick={() => void loadEmployees()} disabled={loading}>Refresh list</button>
+              <button className="primary" onClick={() => setShowEmployeeForm((visible) => !visible)}>{showEmployeeForm ? 'Cancel' : 'Register employee'}</button>
+            </div>
           </div>
           {showEmployeeForm && (
             <form className="employee-form" onSubmit={(event) => void createEmployee(event)}>
               <label>Full name<input required value={employeeName} onChange={(event) => setEmployeeName(event.target.value)} /></label>
               <label>Work email<input required type="email" value={employeeEmail} onChange={(event) => setEmployeeEmail(event.target.value)} /></label>
-              <label>Temporary password<input required minLength={12} type="password" value={employeePassword} onChange={(event) => setEmployeePassword(event.target.value)} /></label>
-              <button className="primary" disabled={loading}>Create account</button>
+              <label>Temporary password<input required minLength={12} type="password" autoComplete="new-password" value={employeePassword} onChange={(event) => setEmployeePassword(event.target.value)} /></label>
+              <button className="primary" disabled={loading}>{loading ? 'Registering…' : 'Register employee'}</button>
             </form>
           )}
+          <div className="employee-directory-heading">
+            <strong>{employees.length} registered · {employees.filter((employee) => employee.isActive).length} active</strong>
+            <input
+              aria-label="Search employees"
+              type="search"
+              placeholder="Search by name or email"
+              value={employeeSearch}
+              onChange={(event) => setEmployeeSearch(event.target.value)}
+            />
+          </div>
+          <div className="table-wrap">
+            <table>
+              <thead><tr><th>Employee</th><th>Registered</th><th>Status</th><th>Account actions</th></tr></thead>
+              <tbody>
+                {employees.filter((employee) => {
+                  const query = employeeSearch.trim().toLowerCase();
+                  return !query || employee.name.toLowerCase().includes(query) || employee.email.toLowerCase().includes(query);
+                }).map((employee) => (
+                  <Fragment key={employee.id}>
+                    <tr>
+                      <td><strong>{employee.name}</strong><small>{employee.email}</small></td>
+                      <td>{new Date(employee.createdAt).toLocaleDateString()}</td>
+                      <td><span className={employee.isActive ? 'badge' : 'status-off'}>{employee.isActive ? 'Active' : 'Disabled'}</span></td>
+                      <td className="access-controls">
+                        <button className="text-button" onClick={() => {
+                          setEditingEmployeeId(editingEmployeeId === employee.id ? '' : employee.id);
+                          setEditingEmployeeName(employee.name);
+                          setEditingEmployeeEmail(employee.email);
+                          setEditingEmployeePassword('');
+                        }}>
+                          {editingEmployeeId === employee.id ? 'Cancel' : 'Edit'}
+                        </button>
+                        <button
+                          className="text-button"
+                          disabled={loading}
+                          onClick={() => void updateEmployee(employee, { isActive: !employee.isActive })}
+                        >
+                          {employee.isActive ? 'Disable' : 'Enable'}
+                        </button>
+                      </td>
+                    </tr>
+                    {editingEmployeeId === employee.id && (
+                      <tr>
+                        <td colSpan={4}>
+                          <form
+                            className="employee-form"
+                            onSubmit={(event) => {
+                              event.preventDefault();
+                              void updateEmployee(employee, {
+                                name: editingEmployeeName,
+                                email: editingEmployeeEmail,
+                                ...(editingEmployeePassword ? { password: editingEmployeePassword } : {}),
+                              });
+                            }}
+                          >
+                            <label>Full name<input required value={editingEmployeeName} onChange={(event) => setEditingEmployeeName(event.target.value)} /></label>
+                            <label>Work email<input required type="email" value={editingEmployeeEmail} onChange={(event) => setEditingEmployeeEmail(event.target.value)} /></label>
+                            <label>Reset password (leave blank to keep current)<input minLength={12} type="password" autoComplete="new-password" value={editingEmployeePassword} onChange={(event) => setEditingEmployeePassword(event.target.value)} /></label>
+                            <button className="primary" disabled={loading}>{loading ? 'Saving…' : 'Save changes'}</button>
+                          </form>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                ))}
+                {employees.length === 0 && <tr><td className="empty" colSpan={4}>No employee accounts yet. Select “Register employee” to add the first one.</td></tr>}
+                {employees.length > 0 && !employees.some((employee) => {
+                  const query = employeeSearch.trim().toLowerCase();
+                  return !query || employee.name.toLowerCase().includes(query) || employee.email.toLowerCase().includes(query);
+                }) && <tr><td className="empty" colSpan={4}>No employees match your search.</td></tr>}
+              </tbody>
+            </table>
+          </div>
         </section>}
         {section === 'overview' && <section className="panel">
           <div className="panel-heading">

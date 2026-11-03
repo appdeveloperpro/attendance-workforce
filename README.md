@@ -5,7 +5,7 @@ An employee-owned Android attendance app with shift-only location collection, a 
 ## What is included
 
 - Employee-only Android sign-in, GPS check-in/check-out, and an on-shift location foreground service with visible GPS/sync health.
-- A NestJS API with hashed passwords, role-based admin routes, JWT sessions, employee account creation, and server-side distance estimates.
+- A NestJS API with hashed passwords, role-based admin routes, JWT sessions, employee account management, and server-side distance estimates.
 - A Next.js admin dashboard for daily shifts and exact recorded GPS coordinates.
 - GPS samples are collected only during an app-authorized shift. Uploads can be delayed for up to 7 days and are accepted only when their capture time falls inside that shift. The app does not request always-on background location.
 - Both the Android app and API restrict attendance access to employee accounts; administrators use the web dashboard.
@@ -55,7 +55,7 @@ Requirements: Node.js 20.9+, npm, Android Studio with Android SDK, and Docker De
    npm run prisma:seed-admin --workspace @attendance/api
    ```
 
-   Superadmins can create and promote/demote administrators, disable accounts, and update the location retention period from the dashboard. Only an active superadmin can change these settings, and the final active superadmin cannot disable or demote themselves.
+   Superadmins can create and manage administrator accounts, reset their profile/password, change roles, disable accounts, and update the location retention period from the dashboard. Administrators and superadmins can register and manage employee accounts. Disabling an employee preserves their attendance history and is blocked while they have an active shift. The final active superadmin cannot disable or demote themselves.
 
 5. Start the API and dashboard in separate terminals:
 
@@ -64,7 +64,7 @@ Requirements: Node.js 20.9+, npm, Android Studio with Android SDK, and Docker De
    npm run dev:admin
    ```
 
-   Open `http://localhost:3001` and sign in with the configured administrator credentials. Use the dashboard to create employee accounts. The selected local day shows shifts whose check-in time falls on that day; an overnight shift is listed on its start day.
+   Open `http://localhost:3001` and sign in with the configured administrator credentials. Use the **Employees** section to register, search, update, reset passwords, or disable/re-enable employee accounts. Superadmins can also manage administrator accounts in **Admin access**. The selected local day shows shifts whose check-in time falls on that day; an overnight shift is listed on its start day.
 
 6. Open `apps/android` in Android Studio, sync Gradle, and run the app on a device or emulator. Debug builds default to `http://10.0.2.2:3000/api` for the emulator. Set `API_BASE_URL` for another debug endpoint. To build a debug APK for the emulator from PowerShell:
 
@@ -100,7 +100,7 @@ Verify the dashboard loads at `https://<your-domain>/` and the API responds with
 - `POST /api/attendance/check-in`
 - `POST /api/attendance/check-out`
 - `POST /api/locations` (returns `204 No Content` on acceptance; delayed samples are allowed for up to 7 days)
-- `POST /api/admin/employees` (administrator only)
+- `GET /api/admin/employees`, `POST /api/admin/employees`, `PATCH /api/admin/employees/:id` (administrator or superadmin)
 - `GET /api/admin/admins`, `POST /api/admin/admins`, `PATCH /api/admin/admins/:id` (superadmin only)
 - `GET /api/admin/settings`, `PATCH /api/admin/settings` (superadmin only; location retention 1–3650 days)
 - `GET /api/admin/shifts?from=<ISO>&to=<ISO>&page=1&pageSize=50` (administrator only; page size is capped at 100)

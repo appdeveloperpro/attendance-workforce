@@ -10,7 +10,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { Type } from 'class-transformer';
-import { IsBoolean, IsEmail, IsIn, IsInt, IsOptional, IsString, Max, Min, MinLength } from 'class-validator';
+import { IsBoolean, IsEmail, IsIn, IsInt, IsString, Max, Min, MinLength, ValidateIf } from 'class-validator';
 import { JwtGuard } from './auth.guard';
 import { Roles } from './roles.decorator';
 import { RolesGuard } from './roles.guard';
@@ -50,24 +50,44 @@ class ShiftQueryDto {
 }
 
 class UpdateAdminDto {
-  @IsOptional()
+  @ValidateIf((_object, value) => value !== undefined)
   @IsIn(['SUPERADMIN', 'ADMIN'])
   role?: 'SUPERADMIN' | 'ADMIN';
 
-  @IsOptional()
+  @ValidateIf((_object, value) => value !== undefined)
   @IsBoolean()
   isActive?: boolean;
 
-  @IsOptional()
+  @ValidateIf((_object, value) => value !== undefined)
   @IsString()
   @MinLength(1)
   name?: string;
 
-  @IsOptional()
+  @ValidateIf((_object, value) => value !== undefined)
   @IsEmail()
   email?: string;
 
-  @IsOptional()
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsString()
+  @MinLength(12)
+  password?: string;
+}
+
+class UpdateEmployeeDto {
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsBoolean()
+  isActive?: boolean;
+
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsString()
+  @MinLength(1)
+  name?: string;
+
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsEmail()
+  email?: string;
+
+  @ValidateIf((_object, value) => value !== undefined)
   @IsString()
   @MinLength(12)
   password?: string;
@@ -90,6 +110,16 @@ export class AdminController {
   @Post('employees')
   createEmployee(@Body() body: CreateEmployeeDto) {
     return this.adminService.createEmployee(body);
+  }
+
+  @Get('employees')
+  employees() {
+    return this.adminService.listEmployees();
+  }
+
+  @Patch('employees/:id')
+  updateEmployee(@Param('id') id: string, @Body() body: UpdateEmployeeDto) {
+    return this.adminService.updateEmployee(id, body);
   }
 
   @Get('admins')

@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "build": "prisma generate && tsc -p tsconfig.build.json",
-    "test": "npm run build && node --test test/route-distance.test.cjs",
+    "test": "npm run build && node --test test/route-distance.test.cjs test/admin-service.test.cjs test/attendance-service.test.cjs",
     "start": "node dist/main.js",
     "start:dev": "node --watch -r ts-node/register src/main.ts",
     "prisma:generate": "prisma generate",
