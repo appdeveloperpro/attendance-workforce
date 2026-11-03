@@ -33,6 +33,7 @@ function reservePort() {
 
 function startChild(command, args, cwd, env, name) {
   const child = spawn(command, args, { cwd, env, stdio: 'inherit' });
+  child.applicationName = name;
   children.push(child);
   child.once('error', (error) => {
     console.error(`Failed to start ${name}:`, error);
@@ -44,6 +45,32 @@ function startChild(command, args, cwd, env, name) {
       shutdown(code || 1);
     }
   });
+  return child;
+}
+
+function probe(port, pathname) {
+  return new Promise((resolve) => {
+    const request = http.get({ hostname: '127.0.0.1', port, path: pathname, timeout: 1000 }, (response) => {
+      response.resume();
+      resolve(response.statusCode !== undefined && response.statusCode < 500);
+    });
+    request.once('timeout', () => request.destroy());
+    request.once('error', () => resolve(false));
+  });
+}
+
+async function waitUntilReady(child, port, pathname) {
+  for (let attempt = 0; attempt < 90; attempt += 1) {
+    if (shuttingDown || child.exitCode !== null || child.signalCode !== null) {
+      throw new Error(`${child.applicationName} exited before becoming ready.`);
+    }
+    if (await probe(port, pathname)) {
+      console.log(`${child.applicationName} is ready.`);
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+  throw new Error(`${child.applicationName} did not become ready within 90 seconds.`);
 }
 
 function shutdown(exitCode) {
@@ -92,14 +119,18 @@ async function main() {
   [apiPort, adminPort] = await Promise.all([reservePort(), reservePort()]);
   if (apiPort === adminPort) return main();
 
-  startChild(
+  for (const signal of ['SIGINT', 'SIGTERM']) {
+    process.once(signal, () => shutdown(0));
+  }
+
+  const api = startChild(
     process.execPath,
     [path.join(apiDirectory, 'dist', 'main.js')],
     apiDirectory,
     { ...process.env, PORT: String(apiPort) },
     'API',
   );
-  startChild(
+  const admin = startChild(
     process.execPath,
     [nextCli, 'start', '--hostname', '127.0.0.1', '--port', String(adminPort)],
     adminDirectory,
@@ -107,9 +138,11 @@ async function main() {
     'admin dashboard',
   );
 
-  for (const signal of ['SIGINT', 'SIGTERM']) {
-    process.once(signal, () => shutdown(0));
-  }
+  await Promise.all([
+    waitUntilReady(api, apiPort, '/api/health'),
+    waitUntilReady(admin, adminPort, '/'),
+  ]);
+  if (shuttingDown) return;
 
   proxy.once('error', (error) => {
     console.error('Failed to start the public application listener:', error);
