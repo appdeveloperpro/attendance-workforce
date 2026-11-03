@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000/api';
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? '/api';
 
 type User = { id: string; email: string; name: string; role: string };
 type AdminAccount = {

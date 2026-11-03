@@ -78,13 +78,11 @@ Requirements: Node.js 20.9+, npm, Android Studio with Android SDK, and Docker De
 
 ## Hostinger Node.js deployment
 
-Deploy the API and admin dashboard as separate Node.js websites/services with separate Hostinger URLs (for example, assign a subdomain to the second website). The API is the root workspace's default production start target; it does not serve the dashboard at `/`.
+Deploy both apps through one Hostinger Node.js website. The root entry script serves the admin dashboard at `/` and forwards `/api/*` requests to the API.
 
-For the API deployment, use the repository root (`/`) as the root directory, Node.js 20.9 or newer, `npm run build` as the build command, and `npm start` as the start command. Configure `DATABASE_URL`, `DIRECT_URL`, `JWT_SECRET`, `ADMIN_EMAIL`, `ADMIN_NAME`, `ADMIN_PASSWORD`, and `ADMIN_WEB_ORIGIN` in the API deployment's environment variables. Use Supabase's pooled connection for `DATABASE_URL` and its session-mode connection for `DIRECT_URL`. Hostinger supplies `PORT`; `LOCATION_RETENTION_DAYS` is optional and defaults to `90`. `SUPABASE_URL` and `SUPABASE_API_KEY` are not used by this API.
+In Hostinger, use the repository root (`/`) as the root directory, Node.js 20.9 or newer, `npm run build` as the build command, and `hostinger-start.cjs` as the entry file. Leave the output directory empty. Hostinger supplies `PORT`.
 
-Set `ADMIN_WEB_ORIGIN` to the exact HTTPS origin serving the admin dashboard. For the separate admin deployment, set `NEXT_PUBLIC_API_URL` to the API's HTTPS URL ending in `/api` before building the dashboard. The dashboard origin and API origin must be different if deployed as separate websites.
-
-For the admin deployment, keep the repository root (`/`) as the root directory and use Node.js 20.9 or newer. Set the build command to `npm run build --workspace @attendance/admin`, leave the output directory empty, and set the entry file to `apps/admin/hostinger-start.cjs`. Set `NEXT_PUBLIC_API_URL` to the API URL ending in `/api` as a build-time environment variable. After assigning the dashboard its own HTTPS URL, update the API's `ADMIN_WEB_ORIGIN` to that exact origin and redeploy the API.
+Configure `DATABASE_URL`, `DIRECT_URL`, `JWT_SECRET`, `ADMIN_EMAIL`, `ADMIN_NAME`, `ADMIN_PASSWORD`, and `ADMIN_WEB_ORIGIN` in the website's environment variables. Use Supabase's pooled connection for `DATABASE_URL` and its session-mode connection for `DIRECT_URL`. Set `ADMIN_WEB_ORIGIN` to the exact HTTPS origin of this same Hostinger website, and set `NEXT_PUBLIC_API_URL` to that origin followed by `/api` (for example, `https://your-domain.example/api`) before building. `LOCATION_RETENTION_DAYS` is optional and defaults to `90`; `SUPABASE_URL` and `SUPABASE_API_KEY` are not used by this app.
 
 After the API is deployed, apply the schema and create the initial superadmin once, using the API's `DATABASE_URL` and admin variables in `apps/api/.env`:
 
@@ -93,7 +91,7 @@ npm run db:push
 npm run prisma:seed-admin
 ```
 
-Verify the API responds with `{"status":"ok"}` at `https://<api-domain>/api/health`. A successful build alone does not mean the API process is running.
+Verify the dashboard loads at `https://<your-domain>/` and the API responds with `{"status":"ok"}` at `https://<your-domain>/api/health`. A successful build alone does not mean the application processes started.
 
 ## API outline
 
