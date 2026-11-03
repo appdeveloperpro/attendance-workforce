@@ -53,21 +53,29 @@ export class AdminService {
 
   async updateAdmin(
     id: string,
-    input: { role: 'ADMIN' | 'SUPERADMIN'; isActive: boolean },
+    input: {
+      role?: 'ADMIN' | 'SUPERADMIN';
+      isActive?: boolean;
+      name?: string;
+      email?: string;
+      password?: string;
+    },
     actorId: string,
   ) {
     return this.prisma.$transaction(async (transaction) => {
-      if (id === actorId && (input.role !== 'SUPERADMIN' || !input.isActive)) {
-        throw new BadRequestException('You cannot remove your own superadmin access.');
-      }
       const target = await transaction.user.findUnique({
         where: { id },
-        select: { role: true },
+        select: { role: true, isActive: true },
       });
       if (!target || (target.role !== 'ADMIN' && target.role !== 'SUPERADMIN')) {
         throw new NotFoundException('Admin account not found.');
       }
-      if (target.role === 'SUPERADMIN' && (input.role !== 'SUPERADMIN' || !input.isActive)) {
+      const nextRole = input.role ?? target.role;
+      const nextIsActive = input.isActive ?? target.isActive;
+      if (id === actorId && (nextRole !== 'SUPERADMIN' || !nextIsActive)) {
+        throw new BadRequestException('You cannot remove your own superadmin access.');
+      }
+      if (target.role === 'SUPERADMIN' && (nextRole !== 'SUPERADMIN' || !nextIsActive)) {
         const activeSuperadmins = await transaction.user.count({
           where: { role: 'SUPERADMIN', isActive: true },
         });
@@ -75,12 +83,37 @@ export class AdminService {
           throw new BadRequestException('At least one active superadmin account must remain.');
         }
       }
+
+      const data: {
+        role?: 'ADMIN' | 'SUPERADMIN';
+        isActive?: boolean;
+        name?: string;
+        email?: string;
+        passwordHash?: string;
+      } = {};
+      if (input.role !== undefined) data.role = input.role;
+      if (input.isActive !== undefined) data.isActive = input.isActive;
+      if (input.name !== undefined) {
+        const name = input.name.trim();
+        if (!name) throw new BadRequestException('Name cannot be empty.');
+        data.name = name;
+      }
+      if (input.email !== undefined) data.email = input.email.trim().toLowerCase();
+      if (input.password !== undefined) data.passwordHash = await hash(input.password, 12);
+      if (Object.keys(data).length === 0) {
+        throw new BadRequestException('Provide at least one account field to update.');
+      }
       return transaction.user.update({
         where: { id },
-        data: input,
+        data,
         select: { id: true, name: true, email: true, role: true, isActive: true, createdAt: true },
       });
-    }, { isolationLevel: 'Serializable' });
+    }, { isolationLevel: 'Serializable' }).catch((error: unknown) => {
+      if (isUniqueConstraintError(error)) {
+        throw new ConflictException('An account with this email already exists.');
+      }
+      throw error;
+    });
   }
 
   async getSettings() {

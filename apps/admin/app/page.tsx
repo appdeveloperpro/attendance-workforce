@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { Fragment, FormEvent, useEffect, useMemo, useState } from 'react';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? '/api';
 
@@ -64,6 +64,10 @@ export default function Home() {
   const [adminName, setAdminName] = useState('');
   const [adminEmail, setAdminEmail] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
+  const [editingAdminId, setEditingAdminId] = useState('');
+  const [editingAdminName, setEditingAdminName] = useState('');
+  const [editingAdminEmail, setEditingAdminEmail] = useState('');
+  const [editingAdminPassword, setEditingAdminPassword] = useState('');
   const [retentionDays, setRetentionDays] = useState('90');
 
   useEffect(() => {
@@ -202,7 +206,10 @@ export default function Home() {
     }
   }
 
-  async function updateAdmin(account: AdminAccount, changes: Partial<Pick<AdminAccount, 'role' | 'isActive'>>) {
+  async function updateAdmin(
+    account: AdminAccount,
+    changes: Partial<Pick<AdminAccount, 'role' | 'isActive' | 'name' | 'email'>> & { password?: string },
+  ) {
     const updated = { ...account, ...changes };
     try {
       const response = await fetch(`${API_URL}/admin/admins/${account.id}`, {
@@ -211,14 +218,31 @@ export default function Home() {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ role: updated.role, isActive: updated.isActive }),
+        body: JSON.stringify({
+          role: updated.role,
+          isActive: updated.isActive,
+          ...(changes.name !== undefined ? { name: changes.name } : {}),
+          ...(changes.email !== undefined ? { email: changes.email } : {}),
+          ...(changes.password ? { password: changes.password } : {}),
+        }),
       });
       handleUnauthorized(response);
       const result = await response.json();
       if (!response.ok) throw new Error(result.message ?? 'Could not update administrator.');
       setAdmins((existing) => existing.map((item) => item.id === result.id ? result : item));
+      if (user && result.id === user.id) {
+        const updatedUser = { ...user, name: result.name, email: result.email, role: result.role };
+        setUser(updatedUser);
+        window.localStorage.setItem('attendance_admin_user', JSON.stringify(updatedUser));
+      }
+      if (editingAdminId === account.id) {
+        setEditingAdminId('');
+        setEditingAdminPassword('');
+      }
       setStatusKind('success');
-      setStatus(`Updated access for ${result.email}.`);
+      setStatus(changes.password
+        ? `Updated administrator details and reset the password for ${result.email}.`
+        : `Updated administrator account ${result.email}.`);
     } catch (error) {
       setStatusKind('error');
       setStatus(error instanceof Error ? error.message : 'Could not update administrator.');
@@ -509,25 +533,60 @@ export default function Home() {
                 <table>
                   <thead><tr><th>Administrator</th><th>Access level</th><th>Status</th><th>Control</th></tr></thead>
                   <tbody>{admins.map((account) => (
-                    <tr key={account.id}>
-                      <td><strong>{account.name}</strong><small>{account.email}</small></td>
-                      <td><span className={account.role === 'SUPERADMIN' ? 'role-pill super' : 'role-pill'}>{account.role}</span></td>
-                      <td><span className={account.isActive ? 'badge' : 'status-off'}>{account.isActive ? 'Active' : 'Disabled'}</span></td>
-                      <td className="access-controls">
-                        <select
-                          aria-label={`Role for ${account.email}`}
-                          value={account.role}
-                          disabled={account.id === user.id}
-                          onChange={(event) => void updateAdmin(account, { role: event.target.value as AdminAccount['role'] })}
-                        >
-                          <option value="ADMIN">Admin</option>
-                          <option value="SUPERADMIN">Superadmin</option>
-                        </select>
-                        <button className="text-button" disabled={account.id === user.id} onClick={() => void updateAdmin(account, { isActive: !account.isActive })}>
-                          {account.isActive ? 'Disable' : 'Enable'}
-                        </button>
-                      </td>
-                    </tr>
+                    <Fragment key={account.id}>
+                      <tr>
+                        <td><strong>{account.name}</strong><small>{account.email}</small></td>
+                        <td><span className={account.role === 'SUPERADMIN' ? 'role-pill super' : 'role-pill'}>{account.role}</span></td>
+                        <td><span className={account.isActive ? 'badge' : 'status-off'}>{account.isActive ? 'Active' : 'Disabled'}</span></td>
+                        <td className="access-controls">
+                          <select
+                            aria-label={`Role for ${account.email}`}
+                            value={account.role}
+                            disabled={account.id === user.id}
+                            onChange={(event) => void updateAdmin(account, { role: event.target.value as AdminAccount['role'] })}
+                          >
+                            <option value="ADMIN">Admin</option>
+                            <option value="SUPERADMIN">Superadmin</option>
+                          </select>
+                          <button className="text-button" disabled={account.id === user.id} onClick={() => void updateAdmin(account, { isActive: !account.isActive })}>
+                            {account.isActive ? 'Disable' : 'Enable'}
+                          </button>
+                          <button
+                            className="text-button"
+                            onClick={() => {
+                              setEditingAdminId(editingAdminId === account.id ? '' : account.id);
+                              setEditingAdminName(account.name);
+                              setEditingAdminEmail(account.email);
+                              setEditingAdminPassword('');
+                            }}
+                          >
+                            {editingAdminId === account.id ? 'Cancel' : 'Edit'}
+                          </button>
+                        </td>
+                      </tr>
+                      {editingAdminId === account.id && (
+                        <tr>
+                          <td colSpan={4}>
+                            <form
+                              className="employee-form"
+                              onSubmit={(event) => {
+                                event.preventDefault();
+                                void updateAdmin(account, {
+                                  name: editingAdminName,
+                                  email: editingAdminEmail,
+                                  ...(editingAdminPassword ? { password: editingAdminPassword } : {}),
+                                });
+                              }}
+                            >
+                              <label>Full name<input required value={editingAdminName} onChange={(event) => setEditingAdminName(event.target.value)} /></label>
+                              <label>Work email<input required type="email" value={editingAdminEmail} onChange={(event) => setEditingAdminEmail(event.target.value)} /></label>
+                              <label>Reset password (leave blank to keep current)<input minLength={12} type="password" autoComplete="new-password" value={editingAdminPassword} onChange={(event) => setEditingAdminPassword(event.target.value)} /></label>
+                              <button className="primary" disabled={loading}>Save changes</button>
+                            </form>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
                   ))}</tbody>
                 </table>
               </div>

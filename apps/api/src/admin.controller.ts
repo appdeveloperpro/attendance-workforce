@@ -10,7 +10,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { Type } from 'class-transformer';
-import { IsBoolean, IsEmail, IsIn, IsInt, IsString, Max, Min, MinLength } from 'class-validator';
+import { IsBoolean, IsEmail, IsIn, IsInt, IsOptional, IsString, Max, Min, MinLength } from 'class-validator';
 import { JwtGuard } from './auth.guard';
 import { Roles } from './roles.decorator';
 import { RolesGuard } from './roles.guard';
@@ -50,11 +50,27 @@ class ShiftQueryDto {
 }
 
 class UpdateAdminDto {
+  @IsOptional()
   @IsIn(['SUPERADMIN', 'ADMIN'])
-  role!: 'SUPERADMIN' | 'ADMIN';
+  role?: 'SUPERADMIN' | 'ADMIN';
 
+  @IsOptional()
   @IsBoolean()
-  isActive!: boolean;
+  isActive?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  name?: string;
+
+  @IsOptional()
+  @IsEmail()
+  email?: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(12)
+  password?: string;
 }
 
 class RetentionSettingsDto {
@@ -66,7 +82,7 @@ class RetentionSettingsDto {
 }
 
 @UseGuards(JwtGuard, RolesGuard)
-@Roles('ADMIN')
+@Roles('ADMIN', 'SUPERADMIN')
 @Controller('admin')
 export class AdminController {
   constructor(private readonly adminService: AdminService) {}
