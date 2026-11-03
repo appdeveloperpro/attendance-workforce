@@ -10,6 +10,9 @@
   },
   "scripts": {
     "build": "npm run build --workspace @attendance/api && npm run build --workspace @attendance/admin",
+    "start": "npm run start --workspace @attendance/api",
+    "db:push": "npm run db:push --workspace @attendance/api",
+    "prisma:seed-admin": "npm run prisma:seed-admin --workspace @attendance/api",
     "dev:api": "npm run start:dev --workspace @attendance/api",
     "dev:admin": "npm run dev --workspace @attendance/admin"
   }
