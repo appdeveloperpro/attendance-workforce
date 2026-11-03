@@ -15,18 +15,26 @@ const { AppModule } = require(path.join(apiDirectory, 'dist', 'app.module.js'));
 const next = require(require.resolve('next', { paths: [adminDirectory] }));
 
 const port = Number(process.env.PORT || 3000);
+let apiReady = false;
+let dashboardReady = false;
+let apiHandler;
+let nextHandler;
+
 const server = http.createServer((request, response) => {
-  if (!applicationReady) {
+  const isApiRequest = request.url === '/api' || request.url.startsWith('/api/');
+  if ((isApiRequest && !apiReady) || (!isApiRequest && !dashboardReady)) {
     response.writeHead(503, {
       'content-type': 'application/json',
       'retry-after': '5',
     });
-    response.end(JSON.stringify({ message: 'Application is starting.' }));
+    response.end(JSON.stringify({
+      message: isApiRequest ? 'API is starting or unavailable.' : 'Dashboard is starting or unavailable.',
+    }));
     return;
   }
 
   try {
-    if (request.url === '/api' || request.url.startsWith('/api/')) {
+    if (isApiRequest) {
       apiHandler(request, response);
     } else {
       nextHandler(request, response);
@@ -38,11 +46,7 @@ const server = http.createServer((request, response) => {
   }
 });
 
-let applicationReady = false;
-let apiHandler;
-let nextHandler;
-
-async function initializeApplications() {
+async function initializeApi() {
   if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
     throw new Error('JWT_SECRET must be configured with at least 32 characters.');
   }
@@ -62,7 +66,11 @@ async function initializeApplications() {
   );
   await api.init();
   apiHandler = api.getHttpAdapter().getInstance();
+  apiReady = true;
+  console.log('API is ready.');
+}
 
+async function initializeDashboard() {
   const dashboard = next({
     dev: false,
     dir: adminDirectory,
@@ -71,8 +79,8 @@ async function initializeApplications() {
   });
   await dashboard.prepare();
   nextHandler = dashboard.getRequestHandler();
-  applicationReady = true;
-  console.log('Admin dashboard and API are ready.');
+  dashboardReady = true;
+  console.log('Admin dashboard is ready.');
 }
 
 server.once('error', (error) => {
@@ -82,8 +90,11 @@ server.once('error', (error) => {
 
 server.listen(port, '0.0.0.0', () => {
   console.log(`Application listener bound to port ${port}.`);
-  initializeApplications().catch((error) => {
-    console.error('Application initialization failed:', error);
+  initializeApi().catch((error) => {
+    console.error('API initialization failed:', error);
+  });
+  initializeDashboard().catch((error) => {
+    console.error('Dashboard initialization failed:', error);
   });
 });
 
