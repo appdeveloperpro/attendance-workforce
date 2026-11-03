@@ -64,7 +64,7 @@ Requirements: Node.js 20.9+, npm, Android Studio with Android SDK, and Docker De
    npm run dev:admin
    ```
 
-   Open `http://localhost:3001` and sign in with the configured administrator credentials. Use the **Employees** section to register, search, update, reset passwords, or disable/re-enable employee accounts. Superadmins can also manage administrator accounts in **Admin access**. The selected local day shows shifts whose check-in time falls on that day; an overnight shift is listed on its start day.
+   Open `http://localhost:3001` and sign in with the configured administrator credentials. The **Overview** page summarizes the selected workday and links to common tasks. Use **Attendance** to review shifts and routes, and **Employees** to register, search, update, reset passwords, or disable/re-enable employee accounts. Superadmins can also manage administrator accounts in **Admin access**. The selected local day shows shifts whose check-in time falls on that day; an overnight shift is listed on its start day.
 
 6. Open `apps/android` in Android Studio, sync Gradle, and run the app on a device or emulator. Debug builds default to `http://10.0.2.2:3000/api` for the emulator. Set `API_BASE_URL` for another debug endpoint. To build a debug APK for the emulator from PowerShell:
 
@@ -84,12 +84,16 @@ In Hostinger, use the repository root (`/`) as the root directory, Node.js 20.9 
 
 Configure `DATABASE_URL`, `DIRECT_URL`, `JWT_SECRET`, `ADMIN_EMAIL`, `ADMIN_NAME`, `ADMIN_PASSWORD`, and `ADMIN_WEB_ORIGIN` in the website's environment variables. Use Supabase's pooled connection for `DATABASE_URL` and its session-mode connection for `DIRECT_URL`. Set `ADMIN_WEB_ORIGIN` to the exact HTTPS origin of this same Hostinger website, and set `NEXT_PUBLIC_API_URL` to that origin followed by `/api` (for example, `https://your-domain.example/api`) before building. `LOCATION_RETENTION_DAYS` is optional and defaults to `90`; `SUPABASE_URL` and `SUPABASE_API_KEY` are not used by this app.
 
+The admin route map uses OpenStreetMap tiles and displays required contributor attribution. For small deployments it uses the public OSM tile service; follow its tile usage policy and choose a suitable hosted tile provider if traffic grows. Optional address lookup can be configured at dashboard build time with `NEXT_PUBLIC_REVERSE_GEOCODING_URL`. It must be an HTTPS, browser-accessible (CORS-enabled) endpoint that accepts `GET ?lat=<latitude>&lon=<longitude>` and returns JSON containing a non-empty `display_name` string. `NEXT_PUBLIC_` values are public, so do not include private API keys in this URL. Address lookup is off until an administrator clicks the lookup button; that action sends only the route's start and end coordinates to this endpoint. Coordinates remain displayed if lookup is not configured or fails.
+
 After the API is deployed, apply the schema and create the initial superadmin once, using the API's `DATABASE_URL` and admin variables in `apps/api/.env`:
 
 ```powershell
 npm run db:push
 npm run prisma:seed-admin
 ```
+
+For later releases that change `apps/api/prisma/schema.prisma`, apply the schema update against the deployment database before relying on the changed API. The admin audit log requires the `AdminAuditLog` table; run `npm run db:push` with the deployment database credentials, then deploy/restart the app. Do not run `prisma:seed-admin` again unless you intentionally need to bootstrap or promote the configured superadmin.
 
 Verify the dashboard loads at `https://<your-domain>/` and the API responds with `{"status":"ok"}` at `https://<your-domain>/api/health`. A successful build alone does not mean the application processes started.
 
@@ -103,10 +107,13 @@ Verify the dashboard loads at `https://<your-domain>/` and the API responds with
 - `GET /api/admin/employees`, `POST /api/admin/employees`, `PATCH /api/admin/employees/:id` (administrator or superadmin)
 - `GET /api/admin/admins`, `POST /api/admin/admins`, `PATCH /api/admin/admins/:id` (superadmin only)
 - `GET /api/admin/settings`, `PATCH /api/admin/settings` (superadmin only; location retention 1–3650 days)
-- `GET /api/admin/shifts?from=<ISO>&to=<ISO>&page=1&pageSize=50` (administrator only; page size is capped at 100)
-- `GET /api/admin/shifts/route?shiftId=<id>` (administrator only)
+- `GET /api/admin/shifts?from=<ISO>&to=<ISO>&page=1&pageSize=50&search=<employee>&status=all|active|completed` (administrator or superadmin; page size is capped at 100)
+- `GET /api/admin/shifts/route?shiftId=<id>` (administrator or superadmin)
+- `GET /api/admin/audit?page=1&pageSize=50` (superadmin only)
 
-The admin date selector uses the browser's local day and sends explicit ISO time bounds; shifts are grouped by their local start day. The dashboard displays coordinates rather than sending employee locations to a third-party map provider. A daily 02:00 UTC retention job deletes GPS samples older than the superadmin-configured retention period (initially `LOCATION_RETENTION_DAYS`, default 90; allowed range 1–3650) and clears precise check-in/out coordinates for closed shifts older than that period. Attendance timestamps and the estimated distance total for closed shifts remain; the detailed route points do not.
+The attendance page searches employee name/email server-side, filters active/completed shifts, and exports matching shift rows to CSV (up to 5,000 per export). Route details include an OpenStreetMap view, start/end locations, a per-point list, and a downloadable route CSV with timestamps, coordinates, accuracy, device-reported mock flags, segment estimates, and shift-level quality diagnostics. Coverage is a heuristic: limited means fewer than two points, a gap over 30 minutes, or average accuracy worse than 70 metres; partial means a gap over 10 minutes or average accuracy worse than 35 metres. This is not evidence that a complete journey was captured. Distances are straight-line GPS estimates, not road distances. The superadmin audit log records account creation/updates, password-reset events, and retention-setting changes; it stores no passwords or password hashes.
+
+The admin date selector uses the browser's local day and sends explicit ISO time bounds; shifts are grouped by their local start day. Route coordinates are plotted in the browser over OpenStreetMap tiles; the map provider receives tile requests, not a route upload. If address lookup is configured, its endpoint receives the start/end coordinates only after an administrator chooses to look them up. A daily 02:00 UTC retention job deletes GPS samples older than the superadmin-configured retention period (initially `LOCATION_RETENTION_DAYS`, default 90; allowed range 1–3650) and clears precise check-in/out coordinates for closed shifts older than that period. Attendance timestamps and the estimated distance total for closed shifts remain; the detailed route points do not.
 
 ## Before production
 

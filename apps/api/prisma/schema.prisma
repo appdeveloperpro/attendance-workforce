@@ -30,6 +30,22 @@ model SystemSettings {
   locationRetentionDays Int    @default(90)
 }
 
+model AdminAuditLog {
+  id          String   @id @default(cuid())
+  actorId     String
+  actorName   String
+  actorEmail  String
+  action      String
+  targetId    String?
+  targetName  String
+  targetEmail String?
+  summary     String
+  createdAt   DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([actorId, createdAt])
+}
+
 model Shift {
   id          String           @id @default(cuid())
   employeeId  String

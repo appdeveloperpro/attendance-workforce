@@ -10,7 +10,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { Type } from 'class-transformer';
-import { IsBoolean, IsEmail, IsIn, IsInt, IsString, Max, Min, MinLength, ValidateIf } from 'class-validator';
+import { IsBoolean, IsEmail, IsIn, IsInt, IsString, Max, MaxLength, Min, MinLength, ValidateIf } from 'class-validator';
 import { JwtGuard } from './auth.guard';
 import { Roles } from './roles.decorator';
 import { RolesGuard } from './roles.guard';
@@ -37,6 +37,28 @@ class ShiftQueryDto {
   @IsString()
   to!: string;
 
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page = 1;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  pageSize = 50;
+
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsString()
+  @MaxLength(120)
+  search?: string;
+
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsIn(['all', 'active', 'completed'])
+  status: 'all' | 'active' | 'completed' = 'all';
+}
+
+class AuditQueryDto {
   @Type(() => Number)
   @IsInt()
   @Min(1)
@@ -108,8 +130,8 @@ export class AdminController {
   constructor(private readonly adminService: AdminService) {}
 
   @Post('employees')
-  createEmployee(@Body() body: CreateEmployeeDto) {
-    return this.adminService.createEmployee(body);
+  createEmployee(@Body() body: CreateEmployeeDto, @Req() request: AuthRequest) {
+    return this.adminService.createEmployee(body, request.user);
   }
 
   @Get('employees')
@@ -118,8 +140,12 @@ export class AdminController {
   }
 
   @Patch('employees/:id')
-  updateEmployee(@Param('id') id: string, @Body() body: UpdateEmployeeDto) {
-    return this.adminService.updateEmployee(id, body);
+  updateEmployee(
+    @Param('id') id: string,
+    @Body() body: UpdateEmployeeDto,
+    @Req() request: AuthRequest,
+  ) {
+    return this.adminService.updateEmployee(id, body, request.user);
   }
 
   @Get('admins')
@@ -130,8 +156,8 @@ export class AdminController {
 
   @Post('admins')
   @Roles('SUPERADMIN')
-  createAdmin(@Body() body: CreateEmployeeDto) {
-    return this.adminService.createAdmin(body);
+  createAdmin(@Body() body: CreateEmployeeDto, @Req() request: AuthRequest) {
+    return this.adminService.createAdmin(body, request.user);
   }
 
   @Patch('admins/:id')
@@ -141,7 +167,13 @@ export class AdminController {
     @Body() body: UpdateAdminDto,
     @Req() request: AuthRequest,
   ) {
-    return this.adminService.updateAdmin(id, body, request.user.id);
+    return this.adminService.updateAdmin(id, body, request.user);
+  }
+
+  @Get('audit')
+  @Roles('SUPERADMIN')
+  audit(@Query() query: AuditQueryDto) {
+    return this.adminService.listAuditLog(query.page, query.pageSize);
   }
 
   @Get('settings')
@@ -152,8 +184,8 @@ export class AdminController {
 
   @Patch('settings')
   @Roles('SUPERADMIN')
-  updateSettings(@Body() body: RetentionSettingsDto) {
-    return this.adminService.updateSettings(body.locationRetentionDays);
+  updateSettings(@Body() body: RetentionSettingsDto, @Req() request: AuthRequest) {
+    return this.adminService.updateSettings(body.locationRetentionDays, request.user);
   }
 
   @Get('shifts')
@@ -163,6 +195,8 @@ export class AdminController {
       query.to,
       query.page,
       query.pageSize,
+      query.search,
+      query.status,
     );
   }
 
